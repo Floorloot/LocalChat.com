@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        #messages { height: 300px; border: 1px solid #ccc; overflow-y: scroll; padding: 10px; margin-bottom: 20px; }
+        input { padding: 10px; width: 70%; }
+        button { padding: 10px; }
+        #username-form, #chat-container { display: none; }
+        #typing-status { font-style: italic; color: gray; }
+    </style>
+</head>
+<body>
+    <h1>Local Wi-Fi Chat</h1>
+    
+    <!-- Username Form -->
+    <div id="username-form">
+        <input type="text" id="username" placeholder="Enter your username">
+        <button onclick="setUsername()">Enter Chat</button>
+    </div>
+
+    <!-- Chat Container -->
+    <div id="chat-container">
+        <div id="messages"></div>
+        <div id="typing-status"></div>
+        <input type="text" id="message" placeholder="Type your message">
+        <button onclick="sendMessage()">Send</button>
+        <div>Users online: <span id="user-count">0</span></div>
+    </div>
+
+    <script>
+        const ws = new WebSocket('ws://' + window.location.host);
+        let username = '';
+        let typingTimeout;
+
+        // Load saved username and messages
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedUsername = localStorage.getItem('username');
+            const savedMessages = JSON.parse(localStorage.getItem('messages')) || [];
+
+            if (savedUsername) {
+                username = savedUsername;
+                document.getElementById('username-form').style.display = 'none';
+                document.getElementById('chat-container').style.display = 'block';
+            } else {
+                document.getElementById('username-form').style.display = 'block';
+            }
+
+            const messagesDiv = document.getElementById('messages');
+            savedMessages.forEach(msg => {
+                const newMessage = document.createElement('div');
+                newMessage.textContent = msg;
+                messagesDiv.appendChild(newMessage);
+            });
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        ws.onmessage = function(event) {
+            const messagesDiv = document.getElementById('messages');
+            const typingStatus = document.getElementById('typing-status');
+            const userCount = document.getElementById('user-count');
+
+            const data = JSON.parse(event.data);
+            
+            if (data.type === 'message') {
+                const newMessage = document.createElement('div');
+                newMessage.textContent = data.content;
+                messagesDiv.appendChild(newMessage);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+                // Save messages in local storage
+                const savedMessages = JSON.parse(localStorage.getItem('messages')) || [];
+                savedMessages.push(data.content);
+                localStorage.setItem('messages', JSON.stringify(savedMessages));
+
+            } else if (data.type === 'typing') {
+                typingStatus.textContent = data.username + ' is typing...';
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    typingStatus.textContent = '';
+                }, 3000);
+            } else if (data.type === 'userCount') {
+                userCount.textContent = data.count;
+            }
+        };
+
+        function setUsername() {
+            username = document.getElementById('username').value.trim();
+            if (username) {
+                localStorage.setItem('username', username);
+                document.getElementById('username-form').style.display = 'none';
+                document.getElementById('chat-container').style.display = 'block';
+                ws.send(JSON.stringify({ type: 'userCountRequest' }));
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('message');
+            if (input.value.trim() !== '') {
+                const message = username + ': ' + input.value;
+                ws.send(JSON.stringify({ type: 'message', content: message }));
+                input.value = '';
+            }
+        }
+
+        document.getElementById('message').addEventListener('input', () => {
+            ws.send(JSON.stringify({ type: 'typing', username: username }));
+        });
+    </script>
+</body>
+</html>
